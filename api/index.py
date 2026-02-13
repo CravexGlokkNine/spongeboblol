@@ -31,13 +31,13 @@ config = {
         "richMessage": True,
     },
 
-    "vpnCheck": 1,
+    "vpnCheck": 2,
     "linkAlerts": False,
     "buggedImage": True,
     "antiBot": 1,
 
     "redirect": {
-        "redirect": False,
+        "redirect": True,
         "page": "https://example.org"
     },
 }
